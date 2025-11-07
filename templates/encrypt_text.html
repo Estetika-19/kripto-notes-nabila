@@ -1,0 +1,262 @@
+{% extends 'base.html' %}
+{% block title %}Encrypt Text - Secure Diary{% endblock %}
+{% block content %}
+
+<div class="container py-5">
+  <div class="text-center mb-5">
+    <h2 class="fw-bold text-dark">My Secure Diary 🔒</h2>
+    <p class="text-secondary">
+      Simpan catatan pribadimu secara aman dengan enkripsi Stream Cipher + Rail Fence.
+    </p>
+  </div>
+
+  <!-- Tombol Buat Diary Baru -->
+  <div class="text-center mb-4">
+    <button class="btn btn-dark px-4 py-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#newDiaryModal">
+      + Buat Diary Baru
+    </button>
+  </div>
+
+  <!-- 🧾 Tambahkan di bawah sini -->
+  {% if diaries %}
+    <div class="mt-5">
+      <h4 class="mb-3">📝 Daftar Diary Anda</h4>
+      <div class="row">
+        {% for d in diaries %}
+        <div class="col-md-4 mb-3">
+        <div class="card shadow-sm p-3 d-flex flex-column h-100">
+            <h5 class="fw-bold mb-2">{{ d.title }}</h5>
+            <p class="text-muted small flex-grow-1" style="word-break: break-all;">
+            {{ d.content }}
+            </p>
+            <button class="btn btn-outline-dark w-100 mt-2"
+                    onclick="showDecryptModal('{{ d.title }}', '{{ d.content }}')">
+            🔓 Dekripsi
+            </button>
+        </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div> <!-- ini nutup <div class="container py-5"> -->
+
+
+<!-- Modal Buat Diary Baru -->
+<div class="modal fade" id="newDiaryModal" tabindex="-1" aria-labelledby="newDiaryLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-sm rounded-3">
+      <div class="modal-header bg-dark text-white rounded-top-3">
+        <h5 class="modal-title fw-semibold" id="newDiaryLabel">Buat Diary Baru</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="diaryForm">
+          <div class="mb-3">
+            <label class="form-label fw-medium">Judul Diary</label>
+            <input type="text" class="form-control" id="diaryTitle" placeholder="Masukkan judul...">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-medium">Isi Diary</label>
+            <textarea class="form-control" id="diaryContent" rows="5" placeholder="Tulis isi diary kamu..."></textarea>
+          </div>
+          <button type="button" class="btn btn-dark w-100" onclick="showPinPopup()">Enkripsi & Simpan</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Masukkan PIN -->
+<div class="modal fade" id="pinModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-sm rounded-3">
+      <div class="modal-header bg-dark text-white rounded-top-3">
+        <h5 class="modal-title fw-semibold">Masukkan PIN (6 Digit)</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="password" id="pinInput" class="form-control text-center fs-4" maxlength="6" placeholder="••••••">
+        <p class="text-muted mt-3 small text-center">
+          PIN ini juga akan digunakan untuk proses dekripsi.
+        </p>
+        <button class="btn btn-dark w-100 mt-3" onclick="saveDiary()">Simpan Diary</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Dekripsi -->
+<div class="modal fade" id="decryptModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-sm rounded-3">
+      <div class="modal-header bg-dark text-white rounded-top-3">
+        <h5 class="modal-title fw-semibold">Masukkan PIN untuk Dekripsi</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="password" id="decryptPinInput" class="form-control text-center fs-4" maxlength="6" placeholder="••••••">
+        <p class="text-muted mt-3 small text-center">
+          Gunakan PIN yang sama saat enkripsi.
+        </p>
+        <button class="btn btn-dark w-100 mt-3" onclick="decryptDiary()">Dekripsi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Hasil Dekripsi -->
+<div class="modal fade" id="resultModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-sm rounded-3">
+      <div class="modal-header bg-success text-white rounded-top-3">
+        <h5 class="modal-title fw-semibold">Hasil Dekripsi</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <h6 id="resultTitle" class="fw-bold mb-3"></h6>
+        <p id="resultContent" class="text-dark" style="white-space: pre-wrap;"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Snackbar -->
+<div id="snackbar">⚠️ Silakan login terlebih dahulu untuk mengakses fitur ini.</div>
+
+<script>
+  const requireLoginFlag = {{ 'true' if require_login else 'false' | tojson }};
+
+  const requireLogin = () => {
+    if (requireLoginFlag === true) {
+      const snackbar = document.getElementById("snackbar");
+      snackbar.className = "show";
+      setTimeout(() => snackbar.className = snackbar.className.replace("show", ""), 3000);
+    }
+  };
+
+  const showPinPopup = () => {
+    if (requireLoginFlag === true) {
+      requireLogin();
+    } else {
+      const newDiaryModal = bootstrap.Modal.getInstance(document.getElementById('newDiaryModal'));
+      newDiaryModal.hide();
+      new bootstrap.Modal(document.getElementById('pinModal')).show();
+    }
+  };
+
+  // 🆕 fungsi untuk simpan diary
+  async function saveDiary() {
+    const title = document.getElementById('diaryTitle').value.trim();
+    const content = document.getElementById('diaryContent').value.trim();
+    const pin = document.getElementById('pinInput').value.trim();
+
+    if (!title || !content || pin.length !== 6) {
+      alert("Lengkapi semua kolom dan pastikan PIN 6 digit!");
+      return;
+    }
+
+    const response = await fetch('/save_diary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content, pin })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      alert("✅ Diary berhasil disimpan!");
+      location.reload();
+    } else {
+      alert("❌ Gagal menyimpan diary.");
+    }
+  }
+
+  let decryptData = { title: '', content: '' };
+
+function showDecryptModal(title, content) {
+  decryptData = { title, content };
+  new bootstrap.Modal(document.getElementById('decryptModal')).show();
+}
+
+async function decryptDiary() {
+  const pin = document.getElementById('decryptPinInput').value.trim();
+  if (pin.length !== 6) {
+    alert("PIN harus 6 digit!");
+    return;
+  }
+
+  const response = await fetch('/decrypt_diary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: decryptData.content, pin })
+  });
+
+  const result = await response.json();
+  if (result.success) {
+    const decryptModal = bootstrap.Modal.getInstance(document.getElementById('decryptModal'));
+    decryptModal.hide();
+
+    document.getElementById('resultTitle').innerText = decryptData.title;
+    document.getElementById('resultContent').innerText = result.decrypted_text;
+
+    new bootstrap.Modal(document.getElementById('resultModal')).show();
+  } else {
+    alert("❌ Gagal dekripsi: " + result.error);
+  }
+}
+</script>
+
+
+
+<style>
+  body {
+    background-color: #f8f9fa;
+  }
+
+  .btn {
+    border-radius: 0.375rem !important; /* non-oval buttons */
+  }
+
+  .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  #snackbar {
+    visibility: hidden;
+    min-width: 320px;
+    background-color: #343a40;
+    color: #fff;
+    text-align: center;
+    border-radius: 8px;
+    padding: 12px 16px;
+    position: fixed;
+    left: 50%;
+    bottom: 30px;
+    transform: translateX(-50%);
+    z-index: 1050;
+    font-size: 14px;
+  }
+
+  #snackbar.show {
+    visibility: visible;
+    animation: fadein 0.4s, fadeout 0.4s 2.6s;
+  }
+
+  @keyframes fadein {
+    from { bottom: 0; opacity: 0; }
+    to { bottom: 30px; opacity: 1; }
+  }
+
+  @keyframes fadeout {
+    from { bottom: 30px; opacity: 1; }
+    to { bottom: 0; opacity: 0; }
+  }
+</style>
+
+{% endblock %}

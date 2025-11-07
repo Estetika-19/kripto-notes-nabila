@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - Kriptografi App{% endblock %}
+{% block content %}
+
+<style>
+  body {
+    background-color: #f5f7fa;
+  }
+
+  .dashboard-header {
+    margin-bottom: 40px;
+  }
+
+  .dashboard-header h2 {
+    font-weight: 700;
+    color: #2b2d42;
+  }
+
+  .dashboard-header h5 {
+    color: #6c757d;
+  }
+
+  .dashboard-header p {
+    color: #8d99ae;
+  }
+
+  .feature-card {
+    border: none;
+    border-radius: 16px;
+    transition: all 0.3s ease;
+    background: #fff;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  }
+
+  .feature-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  }
+
+  .feature-icon {
+    font-size: 40px;
+    color: #2b2d42;
+    margin-bottom: 15px;
+  }
+
+  .card-title {
+    font-weight: 600;
+    color: #2b2d42;
+  }
+
+  #featureCarousel img {
+    height: 380px;
+    object-fit: cover;
+  }
+
+  footer {
+    background-color: #212529; /* Warna hitam sama kayak navbar Bootstrap */
+    color: #f8f9fa; /* Warna font putih */
+    text-align: center;
+    font-size: 14px;
+    padding: 20px 10px;
+    margin-top: 60px;
+    width: 100%;
+    position: relative;
+    left: 0;
+  }
+
+  #snackbar {
+  visibility: hidden;
+  background-color: #323232;
+  color: #fff;
+  text-align: center;
+  border-radius: 8px;
+  padding: 12px 24px;
+  position: fixed;
+  z-index: 9999;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  font-size: 15px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+
+  #snackbar.show {
+    visibility: visible;
+    animation: fadein 0.5s, fadeout 0.5s 2.5s;
+  }
+
+  @keyframes fadein {
+    from {bottom: 0; opacity: 0;}
+    to {bottom: 30px; opacity: 1;}
+  }
+
+  @keyframes fadeout {
+    from {bottom: 30px; opacity: 1;}
+    to {bottom: 0; opacity: 0;}
+  }
+</style>
+
+<div class="dashboard-header text-center">
+  <h2>Selamat Datang di Dashboard</h2>
+  {% if session.get('user') %}
+    <h5>Halo, {{ session.get('user') }} 👋</h5>
+  {% endif %}
+  <p>Pilih fitur kriptografi yang ingin kamu gunakan 🔒</p>
+</div>
+
+<!-- Carousel -->
+<div id="featureCarousel" class="carousel slide mb-5" data-bs-ride="carousel">
+  <div class="carousel-inner rounded-4 shadow-sm">
+    <div class="carousel-item active">
+      <img src="https://source.unsplash.com/1200x400/?security" class="d-block w-100" alt="Keamanan">
+    </div>
+    <div class="carousel-item">
+      <img src="https://source.unsplash.com/1200x400/?cryptography" class="d-block w-100" alt="Kriptografi">
+    </div>
+    <div class="carousel-item">
+      <img src="https://source.unsplash.com/1200x400/?privacy" class="d-block w-100" alt="Privasi">
+    </div>
+  </div>
+</div>
+
+<!-- Feature Cards -->
+<div class="container mb-5">
+  <div class="row g-4 justify-content-center">
+    <!-- Enkripsi File -->
+    <div class="col-md-4 col-lg-3">
+      <div class="card feature-card text-center p-4">
+        <div class="feature-icon">🗂️</div>
+        <h5 class="card-title mb-3">Enkripsi File</h5>
+        <p class="text-muted small mb-3">Amankan dokumen penting dengan enkripsi file tingkat lanjut.</p>
+        <a href="/encrypt_file" class="btn btn-primary w-100">Mulai</a>
+      </div>
+    </div>
+
+    <!-- Enkripsi Supertext -->
+    <div class="col-md-4 col-lg-3">
+      <div class="card feature-card text-center p-4">
+        <div class="feature-icon">🔤</div>
+        <h5 class="card-title mb-3">Enkripsi Supertext</h5>
+        <p class="text-muted small mb-3">Lindungi teks rahasia dengan algoritma supertext aman.</p>
+        {% if session.get('user') %}
+          <a href="/encrypt_text" class="btn btn-success w-100">Mulai</a>
+        {% else %}
+          <button class="btn btn-success w-100" onclick="requireLogin()">Mulai</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Enkripsi Gambar -->
+    <div class="col-md-4 col-lg-3">
+      <div class="card feature-card text-center p-4">
+        <div class="feature-icon">🖼️</div>
+        <h5 class="card-title mb-3">Enkripsi Gambar (LSB)</h5>
+        <p class="text-muted small mb-3">Sembunyikan pesan di dalam gambar dengan metode LSB.</p>
+        {% if session.get('user') %}
+          <a href="/encrypt_image" class="btn btn-warning w-100">Mulai</a>
+        {% else %}
+          <button class="btn btn-warning w-100" onclick="requireLogin()">Mulai</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer>
+  <div>© 2025 Kriptografi SI-A</div>
+  <div>Rizky Nabila Ramadhani (124220031) & Estetika Nusantara Yutardo (124220060)</div>
+</footer>
+
+<!-- Snackbar -->
+<div id="snackbar">⚠️ Silakan login terlebih dahulu untuk mengakses fitur ini.</div>
+
+<script>
+  function requireLogin() {
+    const snackbar = document.getElementById("snackbar");
+    snackbar.className = "show";
+    setTimeout(() => snackbar.className = snackbar.className.replace("show", ""), 3000);
+  }
+</script>
+
+{% endblock %}

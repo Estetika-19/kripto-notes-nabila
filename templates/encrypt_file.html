@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}Enkripsi File{% endblock %}
+{% block content %}
+<style>
+  body {
+    background-color: #f5f7fa;
+  }
+
+  .container {
+    max-width: 600px;
+  }
+
+  .form-box {
+    background: #fff;
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    margin-bottom: 40px;
+  }
+
+  .btn-dark {
+    background-color: #000;
+    color: #fff;
+    border: none;
+    transition: all 0.3s ease;
+  }
+
+  .btn-dark:hover {
+    background-color: #222;
+  }
+
+#snackbar {
+  visibility: hidden;
+  background-color: #323232;
+  color: #fff;
+  text-align: center;
+  border-radius: 8px;
+  padding: 12px 24px;
+  position: fixed;
+  z-index: 9999;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  font-size: 15px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+
+#snackbar.show {
+  visibility: visible;
+  opacity: 1;
+  animation: fadein 0.5s, fadeout 0.5s 2.5s;
+}
+
+  @keyframes fadein {
+    from {bottom: 0; opacity: 0;}
+    to {bottom: 30px; opacity: 1;}
+  }
+
+  @keyframes fadeout {
+    from {bottom: 30px; opacity: 1;}
+    to {bottom: 0; opacity: 0;}
+  }
+</style>
+
+<div class="container mt-5">
+  <div class="text-center mb-4">
+    <h2>🗂️ Enkripsi File</h2>
+    <p class="text-muted">Unggah file yang ingin kamu enkripsi menggunakan kunci rahasia.</p>
+  </div>
+
+  <!-- Form Enkripsi -->
+  <div class="form-box">
+    <form method="POST" enctype="multipart/form-data">
+      <div class="mb-3">
+        <input class="form-control" type="file" name="file" required>
+      </div>
+      <button type="submit" class="btn btn-dark w-100 p-3">🔒 Enkripsi & Unduh File</button>
+    </form>
+  </div>
+
+  <!-- Form Dekripsi -->
+  <div class="form-box">
+    <h4 class="mb-3 text-center">🔓 Dekripsi File</h4>
+    <p class="text-muted text-center mb-4">Unggah file terenkripsi (.enc) untuk mengembalikannya ke bentuk semula.</p>
+    <form 
+    method="POST" 
+    enctype="multipart/form-data"
+    {% if require_login %}
+        onsubmit="requireLogin(); return false;"
+    {% endif %}
+    >
+    <div class="mb-3">
+        <input class="form-control" type="file" name="file" required>
+    </div>
+    <button type="submit" class="btn btn-dark w-100 p-3">Dekripsi & Unduh File</button>
+    </form>
+  </div>
+</div>
+
+<!-- Snackbar -->
+<div id="snackbar">⚠️ Silakan login terlebih dahulu untuk mendekripsi file.</div>
+
+<script>
+function requireLogin() {
+  const snackbar = document.getElementById("snackbar");
+  snackbar.className = "show";
+  setTimeout(() => snackbar.className = snackbar.className.replace("show", ""), 3000);
+}
+</script>
+{% endblock %}

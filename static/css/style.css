@@ -1,0 +1,57 @@
+body {
+  font-family: 'Segoe UI', sans-serif;
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+}
+
+.btn {
+  border-radius: 12px;
+  transition: 0.2s;
+}
+
+.btn:hover {
+  transform: scale(1.03);
+}
+
+.card {
+  border-radius: 15px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand {
+  font-weight: bold;
+}
+
+#snackbar {
+  visibility: hidden;
+  min-width: 350px;
+  background-color: #323232;
+  color: #fff;
+  text-align: center;
+  border-radius: 10px;
+  padding: 14px 20px;
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  font-size: 15px;
+  z-index: 9999;
+}
+
+
+#snackbar.show {
+  visibility: visible;
+  animation: fadein 0.5s, fadeout 0.5s 2.5s;
+}
+
+@keyframes fadein {
+  from {bottom: 0; opacity: 0;}
+  to {bottom: 30px; opacity: 1;}
+}
+
+@keyframes fadeout {
+  from {bottom: 30px; opacity: 1;}
+  to {bottom: 0; opacity: 0;}
+}
