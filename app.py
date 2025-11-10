@@ -1,34 +1,62 @@
 from flask import Flask, json, jsonify, render_template, request, redirect, url_for, session, flash, send_file
-from flask_bcrypt import Bcrypt
+# from flask_bcrypt import Bcrypt
+import hashlib
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import os
+from crypto.steganography import railfence_encrypt, lsb_hide, lsb_extract, railfence_decrypt
+from PIL import Image
+from io import BytesIO
+from werkzeug.utils import secure_filename
+from db import get_db, create_tables
+from config import DES_KEY
+from Crypto.Cipher import DES
+from Crypto.Random import get_random_bytes
+import hashlib, base64
 
 # ------------------------------------------------------------
 # Inisialisasi Flask & Library
 # ------------------------------------------------------------
 app = Flask(__name__)
 app.secret_key = "kriptografisia"
-bcrypt = Bcrypt(app)
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
 
-# ------------------------------------------------------------
-# Simulasi database (sementara pakai dictionary)
-# ------------------------------------------------------------
-users = {}
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"  # route untuk redirect jika belum login
 
-# ------------------------------------------------------------
-# Kelas User
-# ------------------------------------------------------------
 class User(UserMixin):
-    def __init__(self, id, username, password_hash):
+    def __init__(self, id, username):
         self.id = id
         self.username = username
-        self.password_hash = password_hash
 
 @login_manager.user_loader
 def load_user(user_id):
-    return users.get(user_id)
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+    data = cur.fetchone()
+    conn.close()
+    if data:
+        return User(data['id'], data['username'])
+    return None
+
+# debug helpers — letakkan setelah app = Flask(__name__)
+import functools
+def debug_print(label):
+    def wrapper(fn):
+        @functools.wraps(fn)
+        def wrapped(*args, **kwargs):
+            try:
+                print(f"--- DEBUG {label} --- session keys: {dict(session)}")
+            except Exception:
+                print(f"--- DEBUG {label} --- session unavailable")
+            return fn(*args, **kwargs)
+        return wrapped
+    return wrapper
+
+# quick debug route to inspect session from browser
+@app.route('/_debug_session')
+def _debug_session():
+    return jsonify(dict(session))
 
 # ------------------------------------------------------------
 # Fungsi Enkripsi & Dekripsi File
@@ -72,7 +100,6 @@ def decrypt_file(input_path, output_path, key="defaultkey"):
         file.write(decrypted_data)
 
 def encrypt_stream_cipher(text, key):
-    # contoh sederhana aja
     return ''.join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(text))
 
 def encrypt_rail_fence(text, key):
@@ -150,14 +177,113 @@ def decrypt_stream_cipher(ciphertext: str, key: str) -> str:
 # ------------------------------------------------------------
 
 @app.route('/')
-def dashboard():
-    return render_template('dashboard.html')
+def index():
+    if not current_user.is_authenticated:
+        flash('Silakan login dulu ⚠️', 'warning')
+        return redirect(url_for('login'))
+    
+    return render_template('dashboard.html', username=session.get('username'))
 
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+    data = cur.fetchone()
+    conn.close()
+    if data:
+        return User(data['id'], data['username'])
+    return None
+
+# --------------------------
+# Route login yang diperbarui
+# --------------------------
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        u = request.form['username'].strip()
+        p = request.form['password']
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT * FROM users WHERE username=%s", (u,))
+        user = cur.fetchone()
+        conn.close()
+
+        if user:
+            hashed_input = hashlib.blake2b(p.encode(), digest_size=32).hexdigest()
+            if hashed_input == user['passhash']:
+                user_obj = User(user['id'], user['username'])
+
+                login_user(user_obj)
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+
+
+                flash(f'Login berhasil! Selamat datang, {u}', 'success')
+                return redirect(url_for('index'))
+            else:
+                flash('Password salah ❌', 'danger')
+        else:
+            flash('Username tidak ditemukan ⚠️', 'warning')
+
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        confirm = request.form['confirm']
+
+        # Validasi input kosong
+        if not username or not password or not confirm:
+            flash('Semua field wajib diisi ⚠️', 'warning')
+            return render_template('register.html')
+
+        # Cek konfirmasi password
+        if password != confirm:
+            flash('Konfirmasi password tidak cocok ❌', 'danger')
+            return render_template('register.html')
+
+        # Hash password dengan BLAKE2b
+        hashed_pass = hashlib.blake2b(password.encode(), digest_size=32).hexdigest()
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Cek apakah username sudah ada
+        cur.execute('SELECT * FROM users WHERE username = %s', (username,))
+        existing = cur.fetchone()
+        if existing:
+            conn.close()
+            flash('Username sudah terdaftar, silakan gunakan yang lain ⚠️', 'warning')
+            return render_template('register.html')
+
+        # Simpan akun baru
+        cur.execute('INSERT INTO users (username, passhash) VALUES (%s, %s)', (username, hashed_pass))
+        conn.commit()
+        conn.close()
+
+        flash('Akun berhasil dibuat 🎉 Silakan login sekarang.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Anda telah logout.', 'info')
+    return redirect(url_for('login'))
 
 @app.route('/encrypt_file', methods=['GET', 'POST'])
+@login_required
 def encrypt_file_page():
-    uploads_folder = os.path.join('static', 'uploads')
-    os.makedirs(uploads_folder, exist_ok=True)  # pastikan foldernya ada
+    uploads_folder = "static/uploads"
+    os.makedirs(uploads_folder, exist_ok=True)
 
     if request.method == 'POST':
         file = request.files.get('file')
@@ -165,49 +291,58 @@ def encrypt_file_page():
             flash('File tidak valid.', 'danger')
             return redirect(request.url)
 
-        # Simpan file asli
         input_path = os.path.join(uploads_folder, file.filename)
         file.save(input_path)
 
-        # Buat nama output terenkripsi
         output_filename = f"encrypted_{file.filename}"
         output_path = os.path.join(uploads_folder, output_filename)
 
-        # Jalankan fungsi enkripsi
+        # Jalankan fungsi enkripsi (contoh: RC4)
         encrypt_file(input_path, output_path)
 
-        # Kirim file terenkripsi ke user
-        return send_file(
-            os.path.abspath(output_path),
-            as_attachment=True,
-            download_name=output_filename
-        )
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
 
     return render_template('encrypt_file.html')
 
-
 @app.route('/encrypt_text')
-def encrypt_text():
-    if 'user' not in session:
-        return render_template('encrypt_text.html', require_login=True)
+@login_required
 
-    # 🧾 Baca semua diary milik user yang sedang login
+def encrypt_text():
+    print("=== DEBUG /encrypt_text ===")
+    print("Authenticated:", current_user.is_authenticated)
+    print("Session:", session)
+
+    if not current_user.is_authenticated:
+        # user belum login
+        return render_template('encrypt_text.html', require_login=True, diaries=[])
+
     diaries = []
     try:
-        with open('data_diary.json', 'r', encoding='utf-8') as f:
-            for line in f:
-                data = json.loads(line)
-                if data.get('user') == session['user']:
-                    diaries.append(data)
-    except FileNotFoundError:
-        pass  # belum ada diary tersimpan
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("""
+            SELECT id, title, content_encrypted
+            FROM notes
+            WHERE user_id=%s
+            ORDER BY id DESC
+        """, (session['user_id'],))
+        rows = cur.fetchall()
+        conn.close()
+        diaries = [
+            {'id': r['id'], 'title': r['title'], 'content': r['content_encrypted']}
+            for r in rows
+        ]
+    except Exception as e:
+        print("Fetch diaries error:", e)
+        diaries = []
 
     return render_template('encrypt_text.html', require_login=False, diaries=diaries)
 
 
 @app.route('/save_diary', methods=['POST'])
+@login_required
 def save_diary():
-    if 'user' not in session:
+    if not current_user.is_authenticated:
         return jsonify({'success': False, 'error': 'Unauthorized'})
 
     data = request.get_json()
@@ -218,41 +353,36 @@ def save_diary():
     if not all([title, content, pin]):
         return jsonify({'success': False, 'error': 'Missing fields'})
 
-    # 🔒 Lakukan enkripsi di sini
-    encrypted_text = encrypt_stream_cipher(content, pin)
-    encrypted_text = encrypt_rail_fence(encrypted_text, 3)
-
-    # Simpan ke database (contoh sederhana file JSON dulu)
-    diary_entry = {
-    'user': session['user'],
-    'title': title,
-    'content': encrypted_text,
-    'pin': str(pin)   # pastikan string, supaya leading zero aman
-    }
-
-
     try:
-        with open('data_diary.json', 'a', encoding='utf-8') as f:
-            json.dump(diary_entry, f)
-            f.write('\n')
+        # 🔐 Enkripsi dua tahap
+        encrypted_text = encrypt_stream_cipher(content, pin)
+        encrypted_text = encrypt_rail_fence(encrypted_text, 3)
+
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO notes (user_id, title, content_encrypted)
+            VALUES (%s, %s, %s)
+        """, (session['user_id'], title, encrypted_text))
+        conn.commit()
+        conn.close()
+
         return jsonify({'success': True})
     except Exception as e:
-        print("Save error:", e)
+        print("DB Save Error:", e)
         return jsonify({'success': False, 'error': str(e)})
-    
-from flask import jsonify  # pastikan import jsonify ada di header file
 
 @app.route('/decrypt_diary', methods=['POST'])
 def decrypt_diary():
-    if 'user' not in session:
+    if not current_user.is_authenticated:
         return jsonify({'success': False, 'error': 'Unauthorized'})
 
     data = request.get_json()
     encrypted_text = data.get('content')
     pin = data.get('pin')
 
-    if not all([encrypted_text, pin]):
-        return jsonify({'success': False, 'error': 'Missing fields'})
+    if not encrypted_text or not pin or len(str(pin)) != 6:
+        return jsonify({'success': False, 'error': 'Missing fields or invalid PIN'})
 
     try:
         # urutan kebalikan dari enkripsi:
@@ -262,50 +392,80 @@ def decrypt_diary():
     except Exception as e:
         print("Decrypt error:", e)
         return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        for user_id, user in users.items():
-            if user.username == username and bcrypt.check_password_hash(user.password_hash, password):
-                login_user(user)
-                flash('Login berhasil!', 'success')
-                session['user'] = username
-                return redirect(url_for('dashboard'))
-
-        flash('Username atau password salah!', 'danger')
-    return render_template('login.html')
+    
 
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        confirm = request.form['confirm']
+UPLOAD_FOLDER = "static/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-        if password != confirm:
-            flash('Password tidak cocok!', 'danger')
-            return redirect(url_for('register'))
+# --------------------------------
+# DES utils
+# --------------------------------
+def pad8(b): return b + bytes([8 - len(b) % 8]) * (8 - len(b) % 8)
+def unpad8(b): return b[:-b[-1]]
 
-        password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-        user_id = str(len(users) + 1)
-        users[user_id] = User(user_id, username, password_hash)
+def des_encrypt(text):
+    iv = get_random_bytes(8)
+    cipher = DES.new(DES_KEY, DES.MODE_CBC, iv)
+    enc = cipher.encrypt(pad8(text.encode()))
+    return base64.b64encode(iv + enc).decode()
 
-        flash('Registrasi berhasil! Silakan login.', 'success')
-        return redirect(url_for('login'))
+def des_decrypt(b64):
+    raw = base64.b64decode(b64)
+    iv, ct = raw[:8], raw[8:]
+    cipher = DES.new(DES_KEY, DES.MODE_CBC, iv)
+    return unpad8(cipher.decrypt(ct)).decode()
 
-    return render_template('register.html')
+# --------------------------------
+# ROUTE: Steganografi (Rail Fence + LSB)
+# --------------------------------
+@app.route('/steganography', methods=['GET', 'POST'])
+@login_required
+def steganography_page():
+    result_image = None
+    decrypted = None
+    filename = None
 
+    if not current_user.is_authenticated:
+        return redirect('/login')
 
-@app.route('/logout')
-def logout():
-    session.pop('user', None)
-    return redirect(url_for('login'))
+    if request.method == "POST":
+        # Deteksi apakah form berisi 'message' (enkripsi) atau hanya 'image' (dekripsi)
+        if "message" in request.form:
+            # ---------- PROSES ENKRIPSI ----------
+            message = request.form["message"]
+            image = request.files["image"]
 
+            if image and message:
+                image_path = os.path.join(UPLOAD_FOLDER, image.filename)
+                image.save(image_path)
+
+                # Enkripsi teks dengan Rail Fence
+                encrypted_text = railfence_encrypt(message, 3)
+
+                # Sisipkan pesan terenkripsi ke gambar menggunakan LSB
+                output_path = os.path.join(UPLOAD_FOLDER, "stego_" + image.filename)
+                lsb_hide(image_path, encrypted_text, output_path)
+
+                result_image = "uploads/" + "stego_" + image.filename
+
+        elif "image" in request.files:
+            # ---------- PROSES DEKRIPSI ----------
+            image = request.files['image']
+            filename = secure_filename(image.filename)
+            path = os.path.join(UPLOAD_FOLDER, filename)
+            image.save(path)
+
+            # Ekstrak pesan dari gambar
+            secret = lsb_extract(path)
+
+            # Dekripsi teks dengan Rail Fence Cipher
+            decrypted = railfence_decrypt(secret, 3)
+
+    return render_template("steganography.html",
+                           result_image=result_image,
+                           decrypted=decrypted,
+                           filename=filename)
 # ------------------------------------------------------------
 # MAIN
 # ------------------------------------------------------------

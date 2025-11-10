@@ -126,15 +126,15 @@
 <div id="snackbar">⚠️ Silakan login terlebih dahulu untuk mengakses fitur ini.</div>
 
 <script>
-  const requireLoginFlag = {{ 'true' if require_login else 'false' | tojson }};
+  const requireLoginFlag = {{ require_login | tojson }};
 
-  const requireLogin = () => {
+  function requireLogin() {
     if (requireLoginFlag === true) {
       const snackbar = document.getElementById("snackbar");
       snackbar.className = "show";
       setTimeout(() => snackbar.className = snackbar.className.replace("show", ""), 3000);
     }
-  };
+  }
 
   const showPinPopup = () => {
     if (requireLoginFlag === true) {
