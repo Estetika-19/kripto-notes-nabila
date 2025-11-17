@@ -1,5 +1,4 @@
 from flask import Flask, json, jsonify, render_template, request, redirect, url_for, session, flash, send_file
-# from flask_bcrypt import Bcrypt
 import hashlib
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 import os
@@ -39,7 +38,6 @@ def load_user(user_id):
         return User(data['id'], data['username'])
     return None
 
-# debug helpers — letakkan setelah app = Flask(__name__)
 import functools
 def debug_print(label):
     def wrapper(fn):
@@ -58,9 +56,73 @@ def debug_print(label):
 def _debug_session():
     return jsonify(dict(session))
 
-# ------------------------------------------------------------
+# --------------------------------
+# DES utils
+# --------------------------------
+def pad8(b): return b + bytes([8 - len(b) % 8]) * (8 - len(b) % 8)
+def unpad8(b): return b[:-b[-1]]
+
+def des_encrypt(text):
+    iv = get_random_bytes(8)
+    cipher = DES.new(DES_KEY, DES.MODE_CBC, iv)
+    enc = cipher.encrypt(pad8(text.encode()))
+    return base64.b64encode(iv + enc).decode()
+
+def des_decrypt(b64):
+    raw = base64.b64decode(b64)
+    iv, ct = raw[:8], raw[8:]
+    cipher = DES.new(DES_KEY, DES.MODE_CBC, iv)
+    return unpad8(cipher.decrypt(ct)).decode()
+
+@app.route("/test_des_all")
+def test_des_all():
+    sample_text = "uji_enkripsi_DES_123"
+    result_html = ""
+
+    try:
+        # 1️⃣ Uji langsung enkripsi & dekripsi DES
+        enc = des_encrypt(sample_text)
+        dec = des_decrypt(enc)
+
+        result_html += "<h4>🧠 Test Fungsi DES</h4>"
+        result_html += f"<p><b>Plaintext:</b> {sample_text}</p>"
+        result_html += f"<p><b>Encrypted (Base64):</b> {enc}</p>"
+        result_html += f"<p><b>Decrypted:</b> {dec}</p>"
+
+        if dec == sample_text:
+            result_html += "<p style='color:green'>✅ DES berfungsi dengan benar!</p>"
+        else:
+            result_html += "<p style='color:red'>❌ DES gagal mengembalikan plaintext asli!</p>"
+
+        # 2️⃣ Simpan ciphertext ke database (contoh tabel: notes)
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO notes (user_id, title, content_encrypted)
+                VALUES (%s, %s, %s)
+            """, (session.get('user_id', 1), "Test DES", enc))
+            conn.commit()
+            conn.close()
+            result_html += "<p>💾 Hasil enkripsi berhasil disimpan ke database.</p>"
+        except Exception as db_err:
+            result_html += f"<p style='color:orange'>⚠️ Gagal simpan ke database: {db_err}</p>"
+
+    except Exception as e:
+        result_html += f"<p style='color:red'>❌ Terjadi error saat testing DES: {e}</p>"
+
+    return f"""
+    <div style='font-family:Arial; padding:20px'>
+        <h3>🔒 Hasil Pengujian DES</h3>
+        {result_html}
+        <hr>
+        <p><i>Tips:</i> Cek tabel <b>notes</b> di database kamu, kolom <b>content_encrypted</b> harus berisi ciphertext acak.</p>
+    </div>
+    """
+
+# -------------------------------
 # Fungsi Enkripsi & Dekripsi File
-# ------------------------------------------------------------
+# -------------------------------
 def rc4_encrypt(data: bytes, key: str) -> bytes:
     """RC4 stream cipher untuk enkripsi dan dekripsi (simetris)."""
     S = list(range(256))
@@ -197,9 +259,9 @@ def load_user(user_id):
         return User(data['id'], data['username'])
     return None
 
-# --------------------------
-# Route login yang diperbarui
-# --------------------------
+# ------------
+# Route login 
+# ------------
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -342,9 +404,6 @@ def encrypt_text():
 @app.route('/save_diary', methods=['POST'])
 @login_required
 def save_diary():
-    if not current_user.is_authenticated:
-        return jsonify({'success': False, 'error': 'Unauthorized'})
-
     data = request.get_json()
     title = data.get('title')
     content = data.get('content')
@@ -358,12 +417,15 @@ def save_diary():
         encrypted_text = encrypt_stream_cipher(content, pin)
         encrypted_text = encrypt_rail_fence(encrypted_text, 3)
 
+        # 🔐 FIX: Encode ke Base64 sebelum dikirim & disimpan
+        encrypted_b64 = base64.b64encode(encrypted_text.encode()).decode()
+
         conn = get_db()
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO notes (user_id, title, content_encrypted)
             VALUES (%s, %s, %s)
-        """, (session['user_id'], title, encrypted_text))
+        """, (session['user_id'], title, encrypted_b64))
         conn.commit()
         conn.close()
 
@@ -373,48 +435,31 @@ def save_diary():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/decrypt_diary', methods=['POST'])
+@login_required
 def decrypt_diary():
-    if not current_user.is_authenticated:
-        return jsonify({'success': False, 'error': 'Unauthorized'})
-
     data = request.get_json()
-    encrypted_text = data.get('content')
+    encrypted_b64 = data.get('content')
     pin = data.get('pin')
 
-    if not encrypted_text or not pin or len(str(pin)) != 6:
+    if not encrypted_b64 or not pin or len(str(pin)) != 6:
         return jsonify({'success': False, 'error': 'Missing fields or invalid PIN'})
 
     try:
+        # 🔓 Decode Base64 → ciphertext asli
+        encrypted_text = base64.b64decode(encrypted_b64).decode()
+
         # urutan kebalikan dari enkripsi:
-        step1 = decrypt_rail_fence(encrypted_text, 3)         # rail fence decrypt
-        original = decrypt_stream_cipher(step1, str(pin))    # stream cipher decrypt menggunakan pin
+        step1 = decrypt_rail_fence(encrypted_text, 3)
+        original = decrypt_stream_cipher(step1, str(pin))
+
         return jsonify({'success': True, 'decrypted_text': original})
     except Exception as e:
         print("Decrypt error:", e)
         return jsonify({'success': False, 'error': str(e)})
-    
 
 
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# --------------------------------
-# DES utils
-# --------------------------------
-def pad8(b): return b + bytes([8 - len(b) % 8]) * (8 - len(b) % 8)
-def unpad8(b): return b[:-b[-1]]
-
-def des_encrypt(text):
-    iv = get_random_bytes(8)
-    cipher = DES.new(DES_KEY, DES.MODE_CBC, iv)
-    enc = cipher.encrypt(pad8(text.encode()))
-    return base64.b64encode(iv + enc).decode()
-
-def des_decrypt(b64):
-    raw = base64.b64decode(b64)
-    iv, ct = raw[:8], raw[8:]
-    cipher = DES.new(DES_KEY, DES.MODE_CBC, iv)
-    return unpad8(cipher.decrypt(ct)).decode()
 
 # --------------------------------
 # ROUTE: Steganografi (Rail Fence + LSB)

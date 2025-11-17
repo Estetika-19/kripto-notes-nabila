@@ -30,8 +30,8 @@
             {{ d.content }}
             </p>
             <button class="btn btn-outline-dark w-100 mt-2"
-                    onclick="showDecryptModal('{{ d.title }}', '{{ d.content }}')">
-            🔓 Dekripsi
+              onclick='showDecryptModal({{ d.title | tojson }}, {{ d.content | tojson }})'>
+               🔓 Dekripsi
             </button>
         </div>
         </div>
@@ -126,7 +126,7 @@
 <div id="snackbar">⚠️ Silakan login terlebih dahulu untuk mengakses fitur ini.</div>
 
 <script>
-  const requireLoginFlag = {{ require_login | tojson }};
+  const requireLoginFlag = {{ require_login | lower }};
 
   function requireLogin() {
     if (requireLoginFlag === true) {

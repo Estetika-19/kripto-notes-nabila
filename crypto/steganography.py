@@ -48,7 +48,6 @@ def railfence_decrypt(cipher, key):
 
 
 # ========== LSB STEGANOGRAPHY ==========
-
 def lsb_hide(input_image_path, secret_text, output_image_path):
     img = Image.open(input_image_path).convert("RGB")
     encoded = img.copy()
@@ -58,6 +57,13 @@ def lsb_hide(input_image_path, secret_text, output_image_path):
     # ubah teks ke biner + tanda akhir (00000000 sebagai terminator)
     binary_secret = ''.join(format(ord(c), '08b') for c in secret_text)
     binary_secret += '00000000'
+
+    capacity = width * height * 3  # total bit
+    needed = len(binary_secret)
+
+    if needed > capacity:
+        raise ValueError(f"Pesan terlalu panjang! Kapasitas gambar hanya {capacity//8} karakter.")
+
 
     for row in range(height):
         for col in range(width):
